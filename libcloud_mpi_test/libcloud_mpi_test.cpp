@@ -7,9 +7,7 @@
 #include <libcloudph++/common/lognormal.hpp>
 #include <libcloudph++/common/unary_function.hpp>
 #include <iostream>
-#if defined(USE_MPI)
   #include "mpi.h"
-#endif
 
 
 using namespace std;
@@ -69,10 +67,8 @@ int main(int argc, char *argv[]){
   printf("ndims %d\n", ndims);
 
   int rank = 0;
-#if defined(USE_MPI)
   MPI_Init(nullptr, nullptr);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-#endif
   opts_init.dt=100.;
   opts_init.sstp_coal = 1; 
   opts_init.kernel = kernel_t::geometric;
@@ -138,9 +134,7 @@ int main(int argc, char *argv[]){
   double *out = prtcls->outbuf();
   printf("---sd_conc init---\n");
   printf("%d: %lf %lf %lf\n",rank, out[0], out[1], out[2]);
-#if defined(USE_MPI)
   MPI_Barrier(MPI_COMM_WORLD);
-#endif
   
 
   for(int i=0;i<70;++i)
@@ -164,12 +158,8 @@ int main(int argc, char *argv[]){
   prtcls->diag_sd_conc();
   out = prtcls->outbuf();
 
-#if defined(USE_MPI)
   MPI_Barrier(MPI_COMM_WORLD);
-#endif
   printf("---sd_conc po adve---\n");
   printf("%d: %lf %lf %lf\n",rank, out[0], out[1], out[2]);
-#if defined(USE_MPI)
   MPI_Finalize();
-#endif
 }
