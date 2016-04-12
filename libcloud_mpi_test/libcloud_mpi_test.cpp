@@ -62,23 +62,37 @@ void two_step(particles_proto_t<double> *prtcls,
 int main(int argc, char *argv[]){
   opts_init_t<double> opts_init;
 
+  if(argc != 2)
+    throw std::runtime_error("please specify number of dimensions (1 or 2)\n");
+
   int ndims;
   sscanf(argv[1], "%d", &ndims);
   printf("ndims %d\n", ndims);
 
   int rank = 0;
-  MPI_Init(nullptr, nullptr);
+  int prov_tl;
+  MPI_Init_thread(nullptr, nullptr, MPI_THREAD_MULTIPLE, &prov_tl);
+  printf("thread lvl provided: %d\n", prov_tl);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   opts_init.dt=100.;
   opts_init.sstp_coal = 1; 
   opts_init.kernel = kernel_t::geometric;
   opts_init.terminal_velocity = vt_t::beard76;
   opts_init.dx = 1;
-  opts_init.nx = 1*(rank+1); 
-  opts_init.x1 = 1*(rank+1);
+
+  if(rank == 0)
+    opts_init.dev_count = 2;
+  if(rank == 1)
+    opts_init.dev_count = 2;
+  if(rank == 2)
+    opts_init.dev_count = 1;
+
+  opts_init.nx = 3;// opts_init.dev_count; 
+  opts_init.x1 = opts_init.nx * opts_init.dx;
+
   opts_init.sd_conc = 64;
   opts_init.n_sd_max = 2000;
-  opts_init.rng_seed = 4444 + rank;
+  opts_init.rng_seed = 44444 - rank;
   if(ndims>1)
   {
     opts_init.dz = 1; 
@@ -97,13 +111,14 @@ int main(int argc, char *argv[]){
 
   particles_proto_t<double> *prtcls;
      prtcls = factory<double>(
-        (backend_t)serial, 
+        (backend_t)multi_CUDA, 
         opts_init
       );
+
   double pth[] = {300., 300., 300.};
   double prhod[] = {1., 1., 1.};
   double prv[] = {.01, 0.01, 0.01};
-  double pCx[] = {1, 1, 1, 1};
+  double pCx[] = {-1, -1, -1, -1};
   double pCz[] = {0., 0., 0.};
   //long int strides[] = {sizeof(double)};
   long int strides[] = {1, 3};
@@ -116,10 +131,12 @@ int main(int argc, char *argv[]){
   arrinfo_t<double> Cx(pCx, xstrides);
   arrinfo_t<double> Cz(pCz, ystrides);
 
+  printf("%d: przed init\n", rank);
   if(ndims==1)
     prtcls->init(th,rhod,rv, Cx);
   else if(ndims==2)
     prtcls->init(th,rhod,rv, Cx, arrinfo_t<double>(), Cz);
+  printf("%d: po init\n",rank);
 
   opts_t<double> opts;
   opts.adve = 0;
@@ -135,7 +152,6 @@ int main(int argc, char *argv[]){
   printf("---sd_conc init---\n");
   printf("%d: %lf %lf %lf\n",rank, out[0], out[1], out[2]);
   MPI_Barrier(MPI_COMM_WORLD);
-  
 
   for(int i=0;i<70;++i)
   {
@@ -154,11 +170,17 @@ int main(int argc, char *argv[]){
   opts.coal = 0;
   opts.adve = 1;
   two_step(prtcls,th,rhod,rv,opts);
+//  printf("%d: ---barrier---\n", rank);
+//  MPI_Barrier(MPI_COMM_WORLD);
+  printf("---diag all---\n");
   prtcls->diag_all();
+  printf("---diag sd_conc---\n");
   prtcls->diag_sd_conc();
+  printf("%d: ---read outbuf---\n", rank);
   out = prtcls->outbuf();
-
+  printf("%d: ---barrier---\n", rank);
   MPI_Barrier(MPI_COMM_WORLD);
+
   printf("---sd_conc po adve---\n");
   printf("%d: %lf %lf %lf\n",rank, out[0], out[1], out[2]);
   MPI_Finalize();
